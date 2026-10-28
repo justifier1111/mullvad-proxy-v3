@@ -9,7 +9,7 @@ import { TypedStorageArea } from "./TypedStorageArea";
 
 const storageArea = new TypedStorageArea<{
     options: Options;
-}>(browser.storage.sync);
+}>(chrome.storage.sync);
 
 export { Options };
 
@@ -22,16 +22,11 @@ export default new (class extends TypedEventTarget<EventMap> {
     constructor() {
         super();
         this.onStorageChanged = this.onStorageChanged.bind(this);
-        browser.storage.onChanged.addListener(this.onStorageChanged);
-
-        // Supresses sendRemoveListener closed conduit error
-        window.addEventListener("unload", () => {
-            browser.storage.onChanged.removeListener(this.onStorageChanged);
-        });
+        chrome.storage.onChanged.addListener(this.onStorageChanged);
     }
 
     private onStorageChanged(
-        changes: { [key: string]: browser.storage.StorageChange },
+        changes: { [key: string]: chrome.storage.StorageChange },
         areaName: string
     ) {
         if (areaName !== "sync") {

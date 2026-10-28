@@ -18,7 +18,7 @@ body {
 }
 
 .loader {
-    --loader-size: 28px;
+    --loader-size: 32px;
     --loader-color: currentcolor;
 
     animation: loader 400ms ease infinite;
@@ -44,7 +44,7 @@ body {
     display: flex;
     flex-direction: column;
     flex: 1;
-    gap: 4px;
+    gap: 5px;
     position: relative;
     user-select: none;
 }
@@ -59,20 +59,20 @@ body {
     background-image: url("assets/icons8-settings.svg");
     background-position: center;
     background-repeat: no-repeat;
-    background-size: 18px;
+    background-size: 20px;
     border: initial;
-    height: 28px;
+    height: 30px;
     position: absolute;
     right: 0px;
     top: 0px;
-    width: 28px;
+    width: 30px;
 }
 
 .connection__status {
     align-items: center;
     display: flex;
     font-weight: bold;
-    gap: 4px;
+    gap: 5px;
     text-transform: uppercase;
 }
 
@@ -90,10 +90,10 @@ body {
     background-image: url("assets/icons8-info.svg");
     background-position: center;
     background-repeat: no-repeat;
-    background-size: 16px;
+    background-size: 15px;
     opacity: 0.5;
-    height: 16px;
-    width: 16px;
+    height: 15px;
+    width: 15px;
 }
 
 .connection__info:hover {
@@ -108,7 +108,7 @@ body {
     font-size: 1.8em;
     font-weight: bold;
     line-height: 1em;
-    margin-bottom: -4px;
+    margin-bottom: -5px;
 }
 .connection__city::after {
     content: ",";
@@ -124,7 +124,7 @@ body {
 }
 
 .connection__ip--v6 {
-    margin-top: -4px;
+    margin-top: -5px;
     font-size: 0.85em;
 }
 
@@ -141,7 +141,7 @@ body {
 
 .selection__country,
 .selection__server {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     width: 100%;
 }
 
@@ -156,7 +156,7 @@ body {
 
 .control {
     display: flex;
-    gap: 8px;
+    gap: 10px;
 }
 
 .control__connect,
@@ -207,9 +207,8 @@ body {
     border-bottom: 1px solid var(--border-color);
     align-items: center;
     display: flex;
-    gap: 8px;
-    padding: 8px;
-    padding-left: 16px;
+    gap: 10px;
+    padding: 10px 20px;
 }
 
 .panel__title {

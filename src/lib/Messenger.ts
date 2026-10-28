@@ -12,11 +12,11 @@ interface TabConnectInfo {
 
 export default class Messenger<T> {
     connect(connectInfo: RuntimeConnectInfo) {
-        return browser.runtime.connect(connectInfo) as unknown as TypedPort<T>;
+        return chrome.runtime.connect(connectInfo) as unknown as TypedPort<T>;
     }
 
     connectTab(tabId: number, connectInfo: TabConnectInfo) {
-        return browser.tabs.connect(
+        return chrome.tabs.connect(
             tabId,
             connectInfo
         ) as unknown as TypedPort<T>;
@@ -24,13 +24,13 @@ export default class Messenger<T> {
 
     onConnect = {
         addListener(cb: (port: TypedPort<T>) => void) {
-            browser.runtime.onConnect.addListener(cb as any);
+            chrome.runtime.onConnect.addListener(cb as any);
         },
         removeListener(cb: (port: TypedPort<T>) => void) {
-            browser.runtime.onConnect.removeListener(cb as any);
+            chrome.runtime.onConnect.removeListener(cb as any);
         },
         hasListener(cb: (port: TypedPort<T>) => void) {
-            return browser.runtime.onConnect.hasListener(cb as any);
+            return chrome.runtime.onConnect.hasListener(cb as any);
         }
     };
 }

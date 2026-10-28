@@ -9,7 +9,7 @@
 export class TypedStorageArea<Schema extends { [key: string]: any }> {
     private storageArea: any;
 
-    constructor(storageArea: browser.storage.StorageArea) {
+    constructor(storageArea: chrome.storage.StorageArea) {
         this.storageArea = storageArea;
     }
 

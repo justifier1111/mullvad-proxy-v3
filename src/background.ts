@@ -9,16 +9,13 @@ import * as mullvadApi from "./lib/mullvadApi";
 import localStorage from "./localStorage";
 import messages from "./messages";
 
-const _ = browser.i18n.getMessage;
+const _ = chrome.i18n.getMessage;
 
-browser.runtime.onInstalled.addListener(async details => {
+chrome.runtime.onInstalled.addListener(async details => {
     switch (details.reason) {
-        // Implicit defaults
         case "install": {
             await options.setAll();
-
-            // Init after defaults set
-            init();
+            init().catch(err => console.error("Init failed:", err));
             break;
         }
         case "update": {
@@ -29,9 +26,8 @@ browser.runtime.onInstalled.addListener(async details => {
 });
 
 type CreateNotificationOptions =
-    browser.notifications.CreateNotificationOptions;
+    chrome.notifications.NotificationOptions<true>;
 
-// If proxy connected successfully
 const notifConnectionSucceeded = (
     host = "host"
 ): CreateNotificationOptions => ({
@@ -41,7 +37,6 @@ const notifConnectionSucceeded = (
     iconUrl: "icons/icons8-ok-120.png"
 });
 
-// If proxy server is unreachable or misc connection error
 const notifConnectionFailed = (host = "host"): CreateNotificationOptions => ({
     title: _("notificationConnectionFailedTitle"),
     message: _("notificationConnectionFailedMessage", host),
@@ -49,7 +44,6 @@ const notifConnectionFailed = (host = "host"): CreateNotificationOptions => ({
     iconUrl: "icons/icons8-warn-120.png"
 });
 
-// If user is not connected to a Mullvad VPN server
 const notifConnectionFailedNonMullvad = (): CreateNotificationOptions => ({
     title: _("notificationConnectionFailedTitle"),
     message: _("notificationConnectionFailedMessageNonMullvad"),
@@ -57,7 +51,6 @@ const notifConnectionFailedNonMullvad = (): CreateNotificationOptions => ({
     iconUrl: "icons/icons8-warn-120.png"
 });
 
-// If proxy is manually disconnected
 const notifConnectionDisconnected = (
     host = "host"
 ): CreateNotificationOptions => ({
@@ -67,37 +60,39 @@ const notifConnectionDisconnected = (
     iconUrl: "icons/icons8-cancel-120.png"
 });
 
-let lastNotificationId: string;
-async function showNotification(createOptions: CreateNotificationOptions) {
+let lastNotificationId: string = "";
+
+async function showNotification(createOptions: CreateNotificationOptions): Promise<string> {
     const { enableNotifications, enableNotificationsOnlyErrors } =
         await options.getAll();
 
     if (!enableNotifications) {
-        return;
+        return "";
     }
 
-    // Limit to error notifications if opt enabled
     if (
         enableNotificationsOnlyErrors &&
         createOptions.title !== _("notificationConnectionFailedTitle")
     ) {
-        return;
+        return "";
     }
 
     if (lastNotificationId) {
-        browser.notifications.clear(lastNotificationId);
+        chrome.notifications.clear(lastNotificationId);
     }
 
-    lastNotificationId = await browser.notifications.create(createOptions);
-    return lastNotificationId;
+    return new Promise<string>((resolve) => {
+        const id = Math.random().toString(36).substr(2, 9);
+        chrome.notifications.create(id, createOptions, () => {
+            lastNotificationId = id;
+            resolve(id);
+        });
+    });
 }
 
 let isChromium: boolean;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { chrome } = window as any;
 
-// Current proxy details
-let proxy: browser.proxy.ProxyType | null;
+let proxy: { type: string; host: string; port: number; proxyDNS: boolean } | null = null;
 let proxyConnecting = false;
 let proxyAbortController = new AbortController();
 
@@ -119,33 +114,66 @@ options.addEventListener("changed", async ev => {
     }
 });
 
-function onProxyRequest(details: browser.proxy._OnRequestDetails) {
-    // Check patterns against request URLs
-    for (const host of excludeList) {
-        if (new URL(details.url).host === host) {
-            return;
-            // Also ignore requests to be loaded into an excluded host
-        } else if (
-            details.documentUrl &&
-            new URL(details.documentUrl).host === host
-        ) {
-            return;
+/**
+ * Set SOCKS5 proxy via chrome.proxy.settings (MV3 compatible)
+ */
+function setProxySettings(host: string, port: number): void {
+    const proxyConfig = {
+        mode: "fixed_servers" as const,
+        rules: {
+            singleProxy: {
+                scheme: "socks5",
+                host: host,
+                port: port
+            },
+            bypassList: excludeList
         }
-    }
+    };
 
-    return proxy;
+    chrome.proxy.settings.set(
+        { value: proxyConfig, scope: "regular" },
+        (): void => {
+            if (chrome.runtime.lastError) {
+                console.error("Proxy set error:", chrome.runtime.lastError);
+            } else {
+                logger.info(`SOCKS5 proxy set to ${host}:${port}`);
+            }
+        }
+    );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * Clear proxy settings and restore direct connection
+ */
+function clearProxySettings(): void {
+    const proxyConfig = {
+        mode: "direct" as const
+    };
+
+    chrome.proxy.settings.set(
+        { value: proxyConfig, scope: "regular" },
+        (): void => {
+            if (chrome.runtime.lastError) {
+                console.error("Proxy clear error:", chrome.runtime.lastError);
+            } else {
+                logger.info("Proxy cleared, direct connection restored");
+            }
+        }
+    );
+}
+
 function onProxyError(...args: any[]) {
     logger.error("Proxy error!", args);
-    showNotification(notifConnectionFailed(proxy?.host));
+    if (proxy) {
+        showNotification(notifConnectionFailed(proxy.host));
+    } else {
+        showNotification(notifConnectionFailed("unknown"));
+    }
     disableProxy();
 }
 
 /**
- * Checks current connection is valid and sets up proxy request
- * listener (or in Chromium, sets the browser proxy settings).
+ * Checks current connection is valid and sets up proxy via chrome.proxy.settings.
  * If client isn't connected via Mullvad, proxy connection is
  * aborted and user is notified.
  */
@@ -159,21 +187,15 @@ async function enableProxy(
 
     logger.info("Connecting...");
 
-    /**
-     * Mullvad SOCKS5 proxy servers do not require authentication,
-     * since they're siloed within the network and accessible only
-     * to authenticated users already.
-     */
     proxy = {
-        type: "socks",
+        type: "socks5",
         host: host,
-        port: mullvadApi.SOCKS_PORT,
+        port: typeof mullvadApi.SOCKS_PORT === "string" ? parseInt(mullvadApi.SOCKS_PORT, 10) : mullvadApi.SOCKS_PORT,
         proxyDNS: await options.get("proxyDns")
     };
 
     proxyConnecting = true;
 
-    // Quit if not connected to a Mullvad server
     if (!details.mullvad_exit_ip) {
         logger.error("Not connected via Mullvad!");
         showNotification(notifConnectionFailedNonMullvad());
@@ -181,40 +203,11 @@ async function enableProxy(
         return;
     }
 
-    /**
-     * Firefox uses a request-based proxy API that allows more
-     * granular control over which requests are proxied, whereas
-     * Chrome is more limited, only allowing basic, declarative
-     * customizations.
-     */
-    if (isChromium) {
-        logger.info("Proxy registered", proxy);
-
-        chrome.proxy.onProxyError.addListener(onProxyError);
-        chrome.proxy.settings.set({
-            scope: "regular",
-            value: {
-                mode: "fixed_servers",
-                rules: {
-                    singleProxy: {
-                        scheme: "socks5",
-                        host: proxy.host,
-                        port: parseInt(proxy.port)
-                    }
-                }
-            }
-        });
-    } else {
-        logger.info("Proxy registered", proxy);
-
-        browser.proxy.onError.addListener(onProxyError);
-        browser.proxy.onRequest.addListener(onProxyRequest, {
-            urls: ["<all_urls>"]
-        });
-    }
-
     try {
-        // Request to trigger proxy
+        logger.info("Proxy registered", proxy);
+
+        setProxySettings(proxy.host, proxy.port);
+
         const address = await mullvadApi.fetchIpAddress(
             mullvadApi.EndpointVariant.IPv4,
             {
@@ -224,9 +217,11 @@ async function enableProxy(
 
         logger.info(`IP address: ${address}`);
 
-        showNotification(notifConnectionSucceeded(proxy.host));
+        if (proxy) {
+            showNotification(notifConnectionSucceeded(proxy.host));
+        }
 
-        browser.browserAction.setIcon({
+        chrome.action.setIcon({
             path: {
                 16: "icons/locked-16.png",
                 24: "icons/locked-24.png",
@@ -236,10 +231,11 @@ async function enableProxy(
 
         proxyConnecting = false;
     } catch (err) {
-        // Only handle request errors for the current fetch
         if (proxy?.host === host) {
-            logger.error("Proxy request failed!");
-            showNotification(notifConnectionFailed(proxy.host));
+            logger.error("Proxy request failed!", err);
+            if (proxy) {
+                showNotification(notifConnectionFailed(proxy.host));
+            }
 
             await disableProxy();
         }
@@ -247,15 +243,16 @@ async function enableProxy(
 }
 
 /**
- * Removes proxy request listener, (or in Chromium, clears the
- * browser proxy settings).
+ * Clears proxy configuration and resets UI.
  */
 async function disableProxy(notify = false) {
     if (notify) {
-        showNotification(notifConnectionDisconnected(proxy?.host));
+        showNotification(notifConnectionDisconnected(proxy?.host ?? "unknown"));
     }
 
-    browser.browserAction.setIcon({
+    clearProxySettings();
+
+    chrome.action.setIcon({
         path: {
             "16": "icons/unlocked-16.png",
             "24": "icons/unlocked-24.png",
@@ -263,24 +260,9 @@ async function disableProxy(notify = false) {
         }
     });
 
-    browser.browserAction.setBadgeText({
-        text: null
+    chrome.action.setBadgeText({
+        text: ""
     });
-
-    if (isChromium) {
-        await new Promise(resolve => {
-            chrome.proxy.onProxyError.removeListener(onProxyError);
-            chrome.proxy.settings.clear(
-                {
-                    scope: "regular"
-                },
-                resolve
-            );
-        });
-    } else {
-        browser.proxy.onError.removeListener(onProxyError);
-        browser.proxy.onRequest.removeListener(onProxyRequest);
-    }
 
     proxy = null;
     proxyConnecting = false;
@@ -290,13 +272,13 @@ async function disableProxy(notify = false) {
 
 function updateBadgeText(countryCode?: string) {
     if (proxy && !proxyConnecting) {
-        browser.browserAction.setBadgeText({
+        chrome.action.setBadgeText({
             text: countryCode?.toUpperCase() ?? ""
         });
     }
 }
 
-messages.onConnect.addListener(port => {
+chrome.runtime.onConnect.addListener(port => {
     if (port.name !== "background") {
         return;
     }
@@ -369,7 +351,6 @@ async function init() {
         return;
     }
 
-    // Options not set yet
     const opts = await options.getAll();
     if (!opts) {
         return;
@@ -390,10 +371,9 @@ async function init() {
         }
 
         case utils.BrowserType.Firefox: {
-            browser.browserAction.setBadgeBackgroundColor({
+            chrome.action.setBadgeBackgroundColor({
                 color: "#294d73"
             });
-
             break;
         }
     }
@@ -427,4 +407,4 @@ async function init() {
     }
 }
 
-init();
+init().catch(err => console.error("Init failed:", err));

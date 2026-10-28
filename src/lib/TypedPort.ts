@@ -1,6 +1,6 @@
 "use strict";
 
-const portMap = new WeakMap<TypedPort<any>, browser.runtime.Port>();
+const portMap = new WeakMap<TypedPort<any>, chrome.runtime.Port>();
 
 /**
  * Allows typed access to a runtime.Port object.
@@ -8,9 +8,9 @@ const portMap = new WeakMap<TypedPort<any>, browser.runtime.Port>();
 export class TypedPort<T> {
     public name: string;
     public error?: { message: string };
-    public sender?: browser.runtime.MessageSender;
+    public sender?: chrome.runtime.MessageSender;
 
-    constructor(port: browser.runtime.Port) {
+    constructor(port: chrome.runtime.Port) {
         portMap.set(this, port);
         this.name = port.name;
 

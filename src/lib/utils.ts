@@ -7,19 +7,22 @@ export enum BrowserType {
 }
 
 export async function getBrowserType() {
-    // Workaround types
-    type GetBrowserInfo = () => Promise<browser.runtime.BrowserInfo>;
-    const getBrowserInfo: GetBrowserInfo | undefined = browser.runtime
-        .getBrowserInfo as any;
+    // Firefox: Use chrome.runtime.getBrowserInfo() if available
+    // (Firefox supports the chrome.* namespace in MV3)
+    const getBrowserInfo = (chrome.runtime as any).getBrowserInfo as (() => Promise<any>) | undefined;
 
     if (getBrowserInfo) {
-        const browserInfo = await getBrowserInfo();
-
-        switch (browserInfo.name.toLowerCase()) {
-            case "firefox":
-                return BrowserType.Firefox;
-            default:
-                return BrowserType.Unknown;
+        try {
+            const browserInfo = await getBrowserInfo();
+            switch (browserInfo.name.toLowerCase()) {
+                case "firefox":
+                    return BrowserType.Firefox;
+                default:
+                    return BrowserType.Unknown;
+            }
+        } catch (e) {
+            // getBrowserInfo may fail or not exist; fall back to Chromium
+            return BrowserType.Chromium;
         }
     }
 

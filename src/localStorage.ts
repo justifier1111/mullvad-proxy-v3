@@ -8,4 +8,4 @@ export default new TypedStorageArea<{
     serverList: mullvadApi.Server[];
     serverListFrom: number;
     recentServers: mullvadApi.Server[];
-}>(browser.storage.local);
+}>(chrome.storage.local);

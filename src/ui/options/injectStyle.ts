@@ -8,12 +8,12 @@ utils.getBrowserType().then(type => {
 
     switch (type) {
         case utils.BrowserType.Firefox:
-            linkElement.href = browser.runtime.getURL(
+            linkElement.href = chrome.runtime.getURL(
                 "ui/options/options-firefox.css"
             );
             break;
         case utils.BrowserType.Chromium:
-            linkElement.href = browser.runtime.getURL(
+            linkElement.href = chrome.runtime.getURL(
                 "ui/options/options-chromium.css"
             );
             break;

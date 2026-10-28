@@ -10,7 +10,6 @@ export interface Options {
     enableDebugInfo: boolean;
     enableExcludeList: boolean;
     excludeList: string[];
-    enableQuickConnect: boolean;
 }
 
 export default {
@@ -22,6 +21,5 @@ export default {
     enableNotificationsOnlyErrors: false,
     enableDebugInfo: false,
     enableExcludeList: false,
-    excludeList: [],
-    enableQuickConnect: true
+    excludeList: []
 } as Options;
